@@ -234,13 +234,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
   animation: dash-flow 3.5s linear infinite;
   cursor: pointer;
 }
-.attack-arc.critical { filter: url(#redGlow); opacity: .98; }
+.attack-arc.critical { filter: none; opacity: .98; }
 .attack-arc.paused { animation-play-state: paused; }
 .attack-node-source { fill: #071014; stroke-width: 1.4; vector-effect: non-scaling-stroke; }
 .attack-node-target { fill: currentColor; }
 .node-ring { fill: none; stroke: currentColor; stroke-width: 1.2; vector-effect: non-scaling-stroke; animation: node-ping 1.8s ease-out infinite; transform-box: fill-box; transform-origin: center; }
-.attack-particle { pointer-events: none; will-change: transform; }
+.attack-particle { pointer-events: none; }
 .heat-point { mix-blend-mode: screen; }
+.map-event-enter { animation: map-event-in .2s ease-out both; }
 .scan-line { position: absolute; top: 0; bottom: 0; width: 14%; left: -14%; background: linear-gradient(90deg, transparent, rgba(0,217,255,.035), rgba(0,217,255,.085), transparent); transform: translate3d(0,0,0) skewX(-8deg); will-change: transform; animation: scan-map 12s linear infinite; pointer-events: none; }
 .map-tooltip {
   position: fixed;
@@ -330,7 +331,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
 .feed-filter button.active { color: #fff; background: rgba(227,30,36,.12); box-shadow: inset 0 -1px var(--red-bright); }
 .incident-feed { flex: 1; overflow: auto; margin: 0 -8px 0 0; padding: 4px 8px 0 0; }
 .feed-item { position: relative; display: grid; grid-template-columns: 42px 1fr; gap: 9px; padding: 12px 0; border-bottom: 1px solid rgba(87,112,128,.16); cursor: pointer; }
-.feed-item.is-new { animation: feed-in .28s ease-out both; }
+.feed-item.is-new { animation: feed-in .22s cubic-bezier(.2,.8,.2,1) both; }
 .feed-item:hover { background: linear-gradient(90deg, rgba(0,217,255,.03), transparent); }
 .feed-time { color: var(--muted); font: 7px var(--mono); padding-top: 2px; }
 .feed-main { min-width: 0; }
@@ -354,7 +355,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
 .map-controls button:hover, .map-controls button.active { color: var(--cyan); border-color: rgba(0,217,255,.44); background: rgba(0,217,255,.07); }
 .map-statusbar { position: absolute; z-index: 31; left: 334px; right: 358px; bottom: 62px; display: flex; justify-content: center; align-items: center; gap: 1px; pointer-events: auto; }
 .status-chip, .speed-control { height: 34px; display: flex; align-items: center; gap: 7px; padding: 0 11px; border: 1px solid rgba(87,112,128,.18); background: rgba(5,10,14,.68);  color: var(--muted); font: 7px var(--mono); }
-.status-chip strong { color: #d7e1e6; font-size: 8px; }
+.status-chip strong { min-width: 54px; color: #d7e1e6; font-size: 8px; text-align: right; font-variant-numeric: tabular-nums; }
 .status-chip i { width: 5px; height: 5px; border-radius: 50%; }
 .status-chip i.green { background: var(--green); box-shadow: 0 0 8px var(--green); }
 .speed-control select { border: 0; background: transparent; color: #d7e1e6; font: 8px var(--mono); outline: none; }
@@ -678,3 +679,8 @@ kbd { border: 1px solid var(--border); background: rgba(255,255,255,.03); color:
 .low-power .scan-line { display: none; }
 .low-power .grid-overlay { opacity: .07; }
 .low-power .overlay-panel { box-shadow: 0 14px 34px rgba(0,0,0,.28); }
+
+@keyframes map-event-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}

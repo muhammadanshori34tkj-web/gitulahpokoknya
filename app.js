@@ -7,7 +7,6 @@
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const lowPowerDevice = (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4) ||
     (navigator.deviceMemory && navigator.deviceMemory <= 4);
-  const particleFrameMs = lowPowerDevice ? 1000 / 30 : 1000 / 60;
 
   const palette = {
     critical: '#ff3040', high: '#ff9f1c', medium: '#f4d35e', low: '#00d9ff', info: '#8f9ba8',
@@ -79,11 +78,10 @@
     activeEvents: [],
     eventCounter: 184,
     generator: null,
-    particles: [],
     mapEventNodes: new Map(),
-    maxActiveEvents: lowPowerDevice ? 8 : 12,
-    lastTickerRender: 0,
-    lastMetricRender: 0,
+    maxActiveEvents: lowPowerDevice ? 7 : 10,
+    tickerDirty: false,
+    lastCriticalToast: 0,
     selectedIncident: null
   };
 
@@ -189,9 +187,14 @@
   function removeMapEvent(eventId) {
     const nodes = state.mapEventNodes.get(eventId);
     if (!nodes) return;
-    Object.values(nodes).forEach(node => node?.remove?.());
     state.mapEventNodes.delete(eventId);
-    state.particles = state.particles.filter(p => p.eventId !== eventId);
+    Object.values(nodes).forEach(node => {
+      if (!node?.isConnected) return;
+      node.style.pointerEvents = 'none';
+      node.style.transition = 'opacity .22s ease';
+      node.style.opacity = '0';
+      window.setTimeout(() => node.remove(), 230);
+    });
   }
 
   function addMapEvent(event) {
@@ -235,19 +238,27 @@
     const particle = svgEl('circle', {
       r: event.severity === 'critical' ? 3 : 2,
       fill: color,
-      class: 'attack-particle'
+      class: 'attack-particle map-event-enter'
     });
+    if (reduceMotion) {
+      particle.setAttribute('transform', `translate(${b.x.toFixed(1)} ${b.y.toFixed(1)})`);
+    } else {
+      const motion = svgEl('animateMotion', {
+        path: d,
+        dur: `${(4.2 + Math.random() * 2.4).toFixed(2)}s`,
+        begin: `-${(Math.random() * 5).toFixed(2)}s`,
+        repeatCount: 'indefinite',
+        calcMode: 'linear'
+      });
+      particle.appendChild(motion);
+    }
     particleLayer.appendChild(particle);
 
-    const particleRecord = {
-      eventId: event.id,
-      el: particle,
-      path,
-      length: path.getTotalLength(),
-      offset: Math.random(),
-      speed: .000055 + Math.random() * .00005
-    };
-    state.particles.push(particleRecord);
+    path.classList.add('map-event-enter');
+    sourceNode.classList.add('map-event-enter');
+    targetNode.classList.add('map-event-enter');
+    ring.classList.add('map-event-enter');
+    heat.classList.add('map-event-enter');
     state.mapEventNodes.set(event.id, { path, sourceNode, targetNode, ring, heat, particle });
   }
 
@@ -256,29 +267,9 @@
     clearLayer('#nodeLayer');
     clearLayer('#particleLayer');
     clearLayer('#heatLayer');
-    state.particles = [];
     state.mapEventNodes.clear();
     state.activeEvents.forEach(addMapEvent);
     $('#activeArcs').textContent = String(state.activeEvents.length);
-    if (!reduceMotion && !particleLoopStarted) {
-      particleLoopStarted = true;
-      requestAnimationFrame(animateParticles);
-    }
-  }
-
-  let lastParticleFrame = 0;
-  let particleLoopStarted = false;
-  function animateParticles(time) {
-    requestAnimationFrame(animateParticles);
-    if (document.hidden || state.paused || time - lastParticleFrame < particleFrameMs) return;
-    if (!$('#view-dashboard')?.classList.contains('active')) return;
-    lastParticleFrame = time;
-    state.particles.forEach((p, index) => {
-      if (!p.el.isConnected || !p.length) return;
-      const phase = (time * p.speed + p.offset + index * .035) % 1;
-      const point = p.path.getPointAtLength(p.length * phase);
-      p.el.setAttribute('transform', `translate(${point.x.toFixed(1)} ${point.y.toFixed(1)})`);
-    });
   }
 
   function showEventTooltip(ev, event) {
@@ -359,23 +350,43 @@
       </div>`).join('');
   }
 
-  function renderFeed(animateNewest = false) {
-    const filter = state.feedFilter;
-    const items = state.incidents.filter(event => {
-      if (filter === 'critical') return event.severity === 'critical';
-      if (filter === 'blocked') return event.status === 'blocked';
-      return true;
-    }).slice(0, 18);
-    $('#incidentFeed').innerHTML = items.map((event, index) => `
-      <article class="feed-item ${animateNewest && index === 0 ? 'is-new' : ''}" data-incident="${event.id}">
-        <time class="feed-time">${shortTime(event.timestamp)}</time>
-        <div class="feed-main">
-          <div class="feed-top"><span class="severity ${event.severity}">${event.severity}</span><span class="feed-status">${escapeHtml(event.status)}</span></div>
-          <strong>${escapeHtml(event.attackType)} · ${escapeHtml(event.targetSector)}</strong>
-          <div class="feed-route"><b>${escapeHtml(event.source.iso)}</b><span>⌁</span><b>${escapeHtml(event.destination.iso)}</b><span>${event.confidence}% confidence</span></div>
-        </div>
-      </article>`).join('');
-    $$('.feed-item').forEach(el => el.addEventListener('click', () => openIncidentDrawer(state.incidents.find(i => i.id === el.dataset.incident))));
+  function feedMatches(event) {
+    if (state.feedFilter === 'critical') return event.severity === 'critical';
+    if (state.feedFilter === 'blocked') return event.status === 'blocked';
+    return true;
+  }
+
+  function createFeedItem(event, animate = false) {
+    const item = document.createElement('article');
+    item.className = `feed-item${animate ? ' is-new' : ''}`;
+    item.dataset.incident = event.id;
+    item.innerHTML = `
+      <time class="feed-time">${shortTime(event.timestamp)}</time>
+      <div class="feed-main">
+        <div class="feed-top"><span class="severity ${event.severity}">${event.severity}</span><span class="feed-status">${escapeHtml(event.status)}</span></div>
+        <strong>${escapeHtml(event.attackType)} · ${escapeHtml(event.targetSector)}</strong>
+        <div class="feed-route"><b>${escapeHtml(event.source.iso)}</b><span>⌁</span><b>${escapeHtml(event.destination.iso)}</b><span>${event.confidence}% confidence</span></div>
+      </div>`;
+    item.addEventListener('click', () => openIncidentDrawer(event));
+    if (animate) item.addEventListener('animationend', () => item.classList.remove('is-new'), { once: true });
+    return item;
+  }
+
+  function renderFeed() {
+    const feed = $('#incidentFeed');
+    const fragment = document.createDocumentFragment();
+    state.incidents.filter(feedMatches).slice(0, 18).forEach(event => fragment.appendChild(createFeedItem(event)));
+    feed.replaceChildren(fragment);
+  }
+
+  function prependFeedItem(event) {
+    if (!feedMatches(event)) return;
+    const feed = $('#incidentFeed');
+    const oldHeight = feed.scrollHeight;
+    const oldTop = feed.scrollTop;
+    feed.prepend(createFeedItem(event, true));
+    while (feed.children.length > 18) feed.lastElementChild?.remove();
+    if (oldTop > 4) feed.scrollTop = oldTop + Math.max(0, feed.scrollHeight - oldHeight);
   }
 
   function renderTicker() {
@@ -384,24 +395,36 @@
     $('#tickerTrack').innerHTML = entries + entries;
   }
 
-  function renderMetrics() {
+  function getMetricData() {
     const critical = state.incidents.filter(i => i.severity === 'critical').length;
     const blocked = state.incidents.filter(i => i.status === 'blocked').length;
     const countries = new Set(state.incidents.flatMap(i => [i.source.country, i.destination.country])).size;
-    const metrics = [
-      { label: 'Total Threat Events', value: number(87421 + state.eventCounter), change: '▲ 12.8%', accent: '#ff3040', icon: '⌁' },
-      { label: 'Active Incidents', value: number(state.incidents.filter(i => ['investigating', 'monitoring'].includes(i.status)).length), change: '▲ 4.3%', accent: '#ff9f1c', icon: '!' },
-      { label: 'Critical Alerts', value: number(critical), change: '▼ 2.1%', accent: '#ff2daa', icon: '◆' },
-      { label: 'Blocked Attempts', value: number(blocked * 739), change: '▲ 18.6%', accent: '#2de38a', icon: '✓' },
-      { label: 'Countries Detected', value: String(countries), change: '+ 3 today', accent: '#00d9ff', icon: '◎' },
-      { label: 'Average Response', value: '01m 42s', change: '▼ 14 sec', accent: '#00d9ff', icon: '◷' },
-      { label: 'Protected Assets', value: '1,284', change: '100% online', accent: '#2de38a', icon: '◇' },
-      { label: 'System Health', value: '99.98%', change: 'Operational', accent: '#2de38a', icon: '●' }
+    return [
+      { key: 'total', label: 'Total Threat Events', value: number(87421 + state.eventCounter), change: '▲ 12.8%', accent: '#ff3040', icon: '⌁' },
+      { key: 'active', label: 'Active Incidents', value: number(state.incidents.filter(i => ['investigating', 'monitoring'].includes(i.status)).length), change: '▲ 4.3%', accent: '#ff9f1c', icon: '!' },
+      { key: 'critical', label: 'Critical Alerts', value: number(critical), change: '▼ 2.1%', accent: '#ff2daa', icon: '◆' },
+      { key: 'blocked', label: 'Blocked Attempts', value: number(blocked * 739), change: '▲ 18.6%', accent: '#2de38a', icon: '✓' },
+      { key: 'countries', label: 'Countries Detected', value: String(countries), change: '+ 3 today', accent: '#00d9ff', icon: '◎' },
+      { key: 'response', label: 'Average Response', value: '01m 42s', change: '▼ 14 sec', accent: '#00d9ff', icon: '◷' },
+      { key: 'assets', label: 'Protected Assets', value: '1,284', change: '100% online', accent: '#2de38a', icon: '◇' },
+      { key: 'health', label: 'System Health', value: '99.98%', change: 'Operational', accent: '#2de38a', icon: '●' }
     ];
-    $('#metricRail').innerHTML = metrics.map(m => {
-      const pts = Array.from({ length: 9 }, (_, i) => `${i * 10},${22 - rand(4, 19)}`).join(' ');
-      return `<article class="metric" style="--accent:${m.accent}"><div class="metric-top"><span>${m.label}</span><span class="metric-icon">${m.icon}</span></div><strong>${m.value}</strong><div class="metric-bottom"><span class="metric-change">${m.change}</span><svg class="sparkline" viewBox="0 0 80 24"><polyline points="${pts}"/></svg></div></article>`;
+  }
+
+  function renderMetrics() {
+    $('#metricRail').innerHTML = getMetricData().map((m, index) => {
+      const pts = Array.from({ length: 9 }, (_, i) => `${i * 10},${8 + ((i * 7 + index * 5) % 14)}`).join(' ');
+      return `<article class="metric" data-metric="${m.key}" style="--accent:${m.accent}"><div class="metric-top"><span>${m.label}</span><span class="metric-icon">${m.icon}</span></div><strong>${m.value}</strong><div class="metric-bottom"><span class="metric-change">${m.change}</span><svg class="sparkline" viewBox="0 0 80 24"><polyline points="${pts}"/></svg></div></article>`;
     }).join('');
+  }
+
+  function updateMetrics() {
+    getMetricData().forEach(m => {
+      const card = $(`[data-metric="${m.key}"]`);
+      if (!card) return;
+      card.querySelector('strong').textContent = m.value;
+      card.querySelector('.metric-change').textContent = m.change;
+    });
   }
 
   function renderActivityChart() {
@@ -454,6 +477,7 @@
   }
 
   function renderTerminal() {
+    const terminal = $('#miniTerminal');
     const lines = [
       `[${timeText(new Date(Date.now() - 6000))}] Threat stream connected`,
       `[${timeText(new Date(Date.now() - 4500))}] New simulated event received`,
@@ -461,7 +485,10 @@
       `[${timeText(new Date(Date.now() - 1500))}] Alert rule matched`,
       `[${timeText()}] Dashboard telemetry updated`
     ];
-    $('#miniTerminal').innerHTML = lines.map(l => `<div>&gt; ${l}</div>`).join('');
+    if (terminal.children.length !== lines.length) {
+      terminal.replaceChildren(...lines.map(() => document.createElement('div')));
+    }
+    [...terminal.children].forEach((line, index) => { line.textContent = `> ${lines[index]}`; });
   }
 
   function renderIncidentTable() {
@@ -631,6 +658,9 @@
     $('#pauseBtn').setAttribute('aria-pressed', String(state.paused));
     $('#pauseBtn').innerHTML = state.paused ? '<span>▶</span> Resume' : '<span>Ⅱ</span> Pause';
     $$('.attack-arc').forEach(p => p.classList.toggle('paused', state.paused));
+    const mapSvg = $('#worldMap');
+    if (state.paused) mapSvg?.pauseAnimations?.();
+    else mapSvg?.unpauseAnimations?.();
     showToast('Live stream', state.paused ? 'Simulation paused.' : 'Simulation resumed.');
   }
 
@@ -660,27 +690,22 @@
     addMapEvent(event);
     $('#activeArcs').textContent = String(state.activeEvents.length);
 
-    // Spread DOM work over separate frames so the map animation stays responsive.
+    // Only append the newest item. Existing feed nodes, scroll state, and map animations stay untouched.
     requestAnimationFrame(() => {
-      renderFeed(true);
-      const now = performance.now();
-      if (now - state.lastTickerRender > 10000) {
-        renderTicker();
-        state.lastTickerRender = now;
-      }
-      requestAnimationFrame(() => {
-        if (now - state.lastMetricRender > 8000) {
-          renderMetrics();
-          state.lastMetricRender = now;
-        }
-        if ($('#view-incidents').classList.contains('active')) renderIncidentTable();
-      });
+      prependFeedItem(event);
+      updateMetrics();
+      state.tickerDirty = true;
+      if ($('#view-incidents').classList.contains('active')) renderIncidentTable();
     });
 
     $('#eventRate').textContent = `${rand(14, 29)} / min`;
     $('#latency').textContent = `${rand(31, 58)} ms`;
     $('#countryUpdated').textContent = 'now';
-    if (event.severity === 'critical') showToast('Critical simulated event', `${event.attackType}: ${event.source.iso} → ${event.destination.iso}`);
+    const now = performance.now();
+    if (event.severity === 'critical' && now - state.lastCriticalToast > 12000) {
+      state.lastCriticalToast = now;
+      showToast('Critical simulated event', `${event.attackType}: ${event.source.iso} → ${event.destination.iso}`);
+    }
   }
 
   function resetGenerator() {
@@ -788,9 +813,7 @@
     renderMapEvents();
     renderFeed();
     renderTicker();
-    state.lastTickerRender = performance.now();
     renderMetrics();
-    state.lastMetricRender = performance.now();
     renderActivityChart();
     renderDonut();
     renderCountryRanking();
@@ -802,6 +825,11 @@
     renderSources();
     setupMapInteractions();
     bindUi();
+    $('#tickerTrack')?.addEventListener('animationiteration', () => {
+      if (!state.tickerDirty) return;
+      renderTicker();
+      state.tickerDirty = false;
+    });
     updateClock();
     setInterval(updateClock, 1000);
     setInterval(renderTerminal, 6000);
