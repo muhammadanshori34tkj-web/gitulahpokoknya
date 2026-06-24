@@ -7,7 +7,7 @@
   <meta name="description" content="Moklet Cyberwatch — simulated global cyber threat monitoring dashboard for defensive education." />
   <title>Moklet Cyberwatch</title>
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="styles.css?v=3-ultra-smooth" />
+  <link rel="stylesheet" href="styles.css?v=4-complete" />
 </head>
 <body>
   <a class="skip-link" href="#main">Lewati ke konten utama</a>
@@ -32,6 +32,7 @@
       <button class="nav-item" data-view="intelligence">Intelligence</button>
       <button class="nav-item" data-view="education">Education</button>
       <button class="nav-item" data-view="sources">Data Sources</button>
+      <button class="nav-item" data-view="reports">Reports</button>
     </nav>
 
     <div class="header-actions">
@@ -46,7 +47,7 @@
       <button class="icon-btn" id="fullscreenBtn" aria-label="Layar penuh">
         <svg viewBox="0 0 24 24"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg>
       </button>
-      <button class="profile-btn" aria-label="Profil pengguna"><span>MF</span><div><strong>Analyst</strong><small>Moklet SOC</small></div></button>
+      <button class="profile-btn" id="settingsBtn" aria-label="Buka pengaturan dashboard"><span>MF</span><div><strong>Analyst</strong><small>Moklet SOC</small></div></button>
       <button class="mobile-menu" id="mobileMenu" aria-label="Buka menu">☰</button>
     </div>
   </header>
@@ -339,37 +340,58 @@
         </div>
         <footer class="app-footer">
           <div><strong>MOKLET CYBERWATCH</strong><span>Powered by Moklet Cyber Security · Learn, Monitor, Defend</span></div>
-          <div><span>v1.0.0-demo</span><span><i></i> SYSTEM OPERATIONAL</span><span>SIMULATED &amp; ANONYMIZED DATA</span></div>
+          <div><span>v2.0.0-complete</span><span><i></i> SYSTEM OPERATIONAL</span><span>SIMULATED &amp; ANONYMIZED DATA</span></div>
         </footer>
       </section>
     </section>
 
     <section class="view page-view" id="view-analytics" data-view-panel="analytics">
-      <div class="page-hero"><div><span class="eyebrow">THREAT ANALYTICS</span><h1>Global telemetry analysis</h1><p>Eksplorasi tren serangan simulasi berdasarkan waktu, kategori, negara, dan severity.</p></div><div class="page-actions"><button class="ghost-btn">Custom range</button><button class="primary-btn">Export snapshot</button></div></div>
-      <div class="filter-strip"><select><option>Last 24 Hours</option><option>Last 7 Days</option><option>Last 30 Days</option></select><select><option>All Countries</option><option>Indonesia</option><option>United States</option><option>Germany</option></select><select><option>All Severity</option><option>Critical</option><option>High</option><option>Medium</option></select><button>Reset filters</button></div>
+      <div class="page-hero"><div><span class="eyebrow">THREAT ANALYTICS</span><h1>Global telemetry analysis</h1><p>Analisis menyeluruh terhadap tren, severity, kategori, sektor, protokol, negara sumber, negara target, confidence, dan status incident dari dataset simulasi.</p></div><div class="page-actions"><button class="ghost-btn" id="analyticsResetBtn">Reset filters</button><button class="primary-btn" id="analyticsExportBtn">Export snapshot</button></div></div>
+      <div class="filter-strip analytics-filters">
+        <label><span>TIME RANGE</span><select id="analyticsRange"><option value="24h">Last 24 Hours</option><option value="7d">Last 7 Days</option><option value="30d">Last 30 Days</option><option value="all">All simulated data</option></select></label>
+        <label><span>COUNTRY</span><select id="analyticsCountry"><option value="all">All Countries</option></select></label>
+        <label><span>SEVERITY</span><select id="analyticsSeverity"><option value="all">All Severity</option><option value="critical">Critical</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option><option value="info">Informational</option></select></label>
+        <label><span>SECTOR</span><select id="analyticsSector"><option value="all">All Sectors</option></select></label>
+        <span class="filter-result" id="analyticsResultLabel">0 events matched</span>
+      </div>
+      <div class="analytics-kpis" id="analyticsKpis"></div>
       <div class="analytics-page-grid" id="analyticsPageGrid"></div>
     </section>
 
     <section class="view page-view" id="view-incidents" data-view-panel="incidents">
-      <div class="page-hero"><div><span class="eyebrow">INCIDENT CONSOLE</span><h1>Live incident operations</h1><p>Semua data pada halaman ini merupakan simulasi defensif dan telah dianonimkan.</p></div><div class="page-actions"><button class="ghost-btn" id="exportCsvBtn">Export CSV</button><button class="primary-btn">Create incident</button></div></div>
-      <div class="incident-toolbar"><label><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg><input id="incidentSearch" placeholder="Cari ID, negara, attack type..." /></label><select id="severityFilter"><option value="all">All severity</option><option value="critical">Critical</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select><select id="statusFilter"><option value="all">All status</option><option value="blocked">Blocked</option><option value="investigating">Investigating</option><option value="monitoring">Monitoring</option></select><span id="incidentCountLabel"></span></div>
+      <div class="page-hero"><div><span class="eyebrow">INCIDENT CONSOLE</span><h1>Live incident operations</h1><p>Telusuri, filter, urutkan, periksa timeline, tambahkan catatan analis, dan ubah status incident simulasi.</p></div><div class="page-actions"><button class="ghost-btn" id="exportCsvBtn">Export CSV</button><button class="primary-btn" id="createIncidentBtn">Create simulated incident</button></div></div>
+      <div class="incident-toolbar"><label><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg><input id="incidentSearch" placeholder="Cari ID, negara, attack type..." /></label><select id="severityFilter"><option value="all">All severity</option><option value="critical">Critical</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option><option value="info">Info</option></select><select id="statusFilter"><option value="all">All status</option><option value="blocked">Blocked</option><option value="investigating">Investigating</option><option value="monitoring">Monitoring</option><option value="resolved">Resolved</option><option value="false-positive">False Positive</option></select><select id="incidentSort"><option value="newest">Newest first</option><option value="severity">Highest severity</option><option value="confidence">Highest confidence</option></select><span id="incidentCountLabel"></span></div>
       <div class="incident-table-wrap"><table class="incident-table"><thead><tr><th>Incident ID</th><th>Time</th><th>Severity</th><th>Attack Type</th><th>Source</th><th>Destination</th><th>Sector</th><th>Confidence</th><th>Status</th><th></th></tr></thead><tbody id="incidentTableBody"></tbody></table></div>
+      <div class="pagination" id="incidentPagination"></div>
     </section>
 
     <section class="view page-view" id="view-intelligence" data-view-panel="intelligence">
-      <div class="page-hero"><div><span class="eyebrow">THREAT INTELLIGENCE</span><h1>Emerging threat landscape</h1><p>Ringkasan indikator, kampanye, dan advisori berbasis dataset simulasi.</p></div><div class="page-actions"><button class="primary-btn">New intelligence note</button></div></div>
+      <div class="page-hero"><div><span class="eyebrow">THREAT INTELLIGENCE</span><h1>Emerging threat landscape</h1><p>Workspace intel defensif untuk mempelajari kampanye, indikator tersanitasi, advisori, teknik MITRE ATT&amp;CK, hubungan antar-event, dan rekomendasi mitigasi.</p></div><div class="page-actions"><button class="ghost-btn" id="intelBookmarksBtn">Bookmarks</button><button class="primary-btn" id="newIntelNoteBtn">New intelligence note</button></div></div>
+      <div class="intel-summary" id="intelSummary"></div>
+      <div class="filter-strip intel-toolbar"><label class="search-field"><span>SEARCH</span><input id="intelSearch" placeholder="Cari campaign, region, tag..." /></label><label><span>CATEGORY</span><select id="intelCategory"><option value="all">All categories</option></select></label><label><span>SEVERITY</span><select id="intelSeverity"><option value="all">All severity</option><option value="critical">Critical</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></label><span class="filter-result" id="intelResultLabel"></span></div>
       <div class="intel-grid" id="intelGrid"></div>
     </section>
 
     <section class="view page-view" id="view-education" data-view-panel="education">
-      <div class="page-hero education-hero"><div><span class="eyebrow">CYBER EDUCATION MODE</span><h1>Learn. Monitor. Defend.</h1><p>Materi defensive security untuk siswa SMK Telkom Malang, dilengkapi simulasi aman dan quiz singkat.</p></div><div class="education-progress"><strong>64%</strong><span>Learning progress</span></div></div>
+      <div class="page-hero education-hero"><div><span class="eyebrow">CYBER EDUCATION MODE</span><h1>Learn. Monitor. Defend.</h1><p>Jalur belajar defensive security interaktif untuk siswa SMK Telkom Malang: teori singkat, contoh log aman, langkah respons, glossary, quiz, progress, dan badge.</p></div><div class="education-progress" id="educationProgress"><strong>0%</strong><span>Learning progress</span></div></div>
+      <div class="education-overview" id="educationOverview"></div>
+      <div class="education-tabs" role="tablist"><button class="active" data-edu-filter="all">All modules</button><button data-edu-filter="fundamental">Fundamental</button><button data-edu-filter="soc">SOC Skills</button><button data-edu-filter="response">Incident Response</button><button data-edu-filter="completed">Completed</button></div>
       <div class="education-grid" id="educationGrid"></div>
+      <div class="education-lab-grid"><article class="tactical-panel"><div class="panel-title"><div><span class="eyebrow">SAFE LOG EXPLORER</span><h3>Read a normalized security event</h3></div><button class="text-btn" id="nextLogExampleBtn">New example</button></div><pre class="safe-log" id="safeLogExample"></pre><div class="log-explanation" id="logExplanation"></div></article><article class="tactical-panel"><div class="panel-title"><div><span class="eyebrow">GLOSSARY</span><h3>Cyber security terms</h3></div></div><input class="glossary-search" id="glossarySearch" placeholder="Cari istilah..."/><div class="glossary-list" id="glossaryList"></div></article></div>
     </section>
 
     <section class="view page-view" id="view-sources" data-view-panel="sources">
-      <div class="page-hero"><div><span class="eyebrow">DATA SOURCES</span><h1>Telemetry and feed health</h1><p>Data dashboard ini berasal dari generator lokal, dataset edukasi, dan sumber simulasi.</p></div><div class="page-actions"><button class="ghost-btn">Refresh all</button></div></div>
-      <div class="source-disclaimer"><strong>SIMULATED DATA</strong><span>Data displayed on this dashboard may contain simulated or anonymized events for educational purposes.</span></div>
+      <div class="page-hero"><div><span class="eyebrow">DATA SOURCES</span><h1>Telemetry and feed health</h1><p>Transparansi sumber data, status sinkronisasi, reliability, latency, volume, dan mode data yang digunakan dashboard.</p></div><div class="page-actions"><button class="ghost-btn" id="refreshSourcesBtn">Refresh all</button></div></div>
+      <div class="source-disclaimer"><strong>SIMULATED DATA</strong><span>Data displayed on this dashboard may contain simulated or anonymized events for educational purposes. Tidak ada IP aktif atau identitas personal yang ditampilkan.</span></div>
+      <div class="source-overview" id="sourceOverview"></div>
       <div class="sources-grid" id="sourcesGrid"></div>
+      <article class="tactical-panel source-log-panel"><div class="panel-title"><div><span class="eyebrow">INGESTION LOG</span><h3>Recent synchronization activity</h3></div></div><div class="source-log" id="sourceLog"></div></article>
+    </section>
+
+    <section class="view page-view" id="view-reports" data-view-panel="reports">
+      <div class="page-hero"><div><span class="eyebrow">REPORTING CENTER</span><h1>Build defensive security reports</h1><p>Buat ringkasan threat harian, laporan incident, laporan negara, atau laporan pembelajaran dari data simulasi dashboard.</p></div><div class="page-actions"><button class="ghost-btn" id="downloadLatestReportBtn">Download latest</button></div></div>
+      <div class="report-layout"><form class="tactical-panel report-builder" id="reportForm"><div class="panel-title"><div><span class="eyebrow">REPORT BUILDER</span><h3>Configure report</h3></div></div><label>Report title<input id="reportTitle" value="Moklet Cyberwatch — Daily Threat Summary" required></label><label>Report type<select id="reportType"><option value="daily">Daily Threat Summary</option><option value="weekly">Weekly Security Report</option><option value="incident">Incident Report</option><option value="country">Country Threat Report</option><option value="education">Student Learning Report</option></select></label><div class="form-grid"><label>Date range<select id="reportRange"><option value="24h">Last 24 Hours</option><option value="7d">Last 7 Days</option><option value="30d">Last 30 Days</option></select></label><label>Severity<select id="reportSeverity"><option value="all">All Severity</option><option value="critical">Critical</option><option value="high">High</option><option value="medium">Medium</option></select></label></div><label>Country<select id="reportCountry"><option value="all">All Countries</option></select></label><fieldset><legend>Include sections</legend><label class="check-row"><input type="checkbox" id="reportCharts" checked> Charts and analytics</label><label class="check-row"><input type="checkbox" id="reportTimeline" checked> Incident timeline</label><label class="check-row"><input type="checkbox" id="reportRecommendations" checked> Defensive recommendations</label></fieldset><button class="primary-btn" type="submit">Generate preview</button></form><div class="tactical-panel report-preview" id="reportPreview"><div class="empty-state"><strong>No report generated</strong><p>Configure the form and generate a preview. Semua isi laporan menggunakan data simulasi.</p></div></div></div>
+      <div class="report-history"><div class="section-heading"><div><span class="eyebrow">HISTORY</span><h2>Generated reports</h2></div></div><div id="reportHistory"></div></div>
     </section>
   </main>
 
@@ -383,6 +405,16 @@
     <div class="drawer-body" id="incidentDrawerBody"></div>
   </aside>
 
+  <aside class="drawer detail-drawer" id="intelligenceDrawer" aria-hidden="true"><div class="drawer-head"><div><span class="eyebrow">INTELLIGENCE DETAIL</span><h2 id="intelDrawerTitle">Threat intelligence</h2></div><button class="drawer-close" data-close="intelligenceDrawer">×</button></div><div class="drawer-body" id="intelligenceDrawerBody"></div></aside>
+
+  <aside class="drawer detail-drawer" id="educationDrawer" aria-hidden="true"><div class="drawer-head"><div><span class="eyebrow">LEARNING MODULE</span><h2 id="educationDrawerTitle">Education</h2></div><button class="drawer-close" data-close="educationDrawer">×</button></div><div class="drawer-body" id="educationDrawerBody"></div></aside>
+
+  <aside class="drawer" id="sourceDrawer" aria-hidden="true"><div class="drawer-head"><div><span class="eyebrow">SOURCE DETAIL</span><h2 id="sourceDrawerTitle">Data source</h2></div><button class="drawer-close" data-close="sourceDrawer">×</button></div><div class="drawer-body" id="sourceDrawerBody"></div></aside>
+
+  <aside class="drawer" id="settingsDrawer" aria-hidden="true"><div class="drawer-head"><div><span class="eyebrow">DASHBOARD SETTINGS</span><h2>Preferences</h2></div><button class="drawer-close" data-close="settingsDrawer">×</button></div><div class="drawer-body" id="settingsDrawerBody"></div></aside>
+
+  <div class="modal-overlay" id="modalOverlay" aria-hidden="true"><div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="modalTitle"><div class="modal-head"><div><span class="eyebrow" id="modalEyebrow">MOKLET CYBERWATCH</span><h2 id="modalTitle">Dialog</h2></div><button class="drawer-close" id="modalCloseBtn">×</button></div><div class="modal-body" id="modalBody"></div></div></div>
+
   <div class="command-overlay" id="commandOverlay" aria-hidden="true">
     <div class="command-palette" role="dialog" aria-modal="true" aria-label="Command palette">
       <div class="command-search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg><input id="commandInput" autocomplete="off" placeholder="Cari halaman, incident, atau command..."/><kbd>ESC</kbd></div>
@@ -391,6 +423,6 @@
   </div>
 
   <div class="toast-region" id="toastRegion" aria-live="polite"></div>
-  <script src="app.js?v=3-ultra-smooth"></script>
+  <script src="app.js?v=4-complete"></script>
 </body>
 </html>

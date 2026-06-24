@@ -1,21 +1,39 @@
-# Moklet Cyberwatch — Ultra Smooth Fix
+# Moklet Cyberwatch — Complete & Smooth Build
 
-Versi ini menghilangkan efek seperti dashboard me-refresh setiap event baru.
+Versi `v4-complete` mempertahankan optimasi ultra-smooth dan menambahkan seluruh workspace yang sebelumnya masih berupa placeholder.
 
-Perubahan utama:
-- Live feed sekarang hanya menambahkan satu item baru, bukan membangun ulang seluruh daftar.
-- Partikel jalur serangan memakai native SVG `animateMotion`, bukan loop JavaScript setiap frame.
-- Metric cards hanya memperbarui angka, bukan mengganti seluruh DOM.
-- Ticker hanya disinkronkan di akhir satu putaran animasi.
-- Terminal hanya mengubah teks node yang sudah ada.
-- Jalur lama fade-out sebelum dihapus.
-- SVG glow filter berat pada critical arc dinonaktifkan.
-- Status angka memiliki lebar tetap agar layout tidak bergeser.
+## Optimasi performa
 
-Deploy ulang dengan:
+- Live feed menambahkan satu node baru secara incremental.
+- Attack particle menggunakan SVG `animateMotion`.
+- Map event lama dihapus menggunakan fade singkat.
+- Arc aktif dibatasi dan dapat diatur melalui Settings.
+- Pan/zoom diproses melalui `requestAnimationFrame`.
+- Ticker diperbarui setelah siklus animasi selesai.
+- Metric hanya memperbarui nilai, bukan me-render seluruh card.
+- Mode low-power otomatis untuk perangkat dengan resource terbatas.
+- Animation dapat dinonaktifkan dari Dashboard Settings.
 
-```bash
-vercel --prod
+## Fitur yang dilengkapi
+
+- Threat Analytics dengan filter dan 11 panel dinamis.
+- Incident search, filter, sort, pagination, create incident, note, false-positive, dan resolve.
+- Threat Intelligence dengan bookmark, detail, IOC tersanitasi, related incident, dan note.
+- Education Mode dengan 10 modul, quiz, progress, safe log explorer, glossary, dan badge.
+- Data Sources dengan health, reliability, latency, enable/disable, refresh, sync, dan ingestion log.
+- Reporting Center dengan preview, history, JSON export, dan print/PDF.
+- Dashboard Settings dan penyimpanan preferensi lokal.
+- README lengkap sebagai dokumentasi proyek.
+
+Setelah deploy ulang, lakukan hard refresh sekali:
+
+```text
+Ctrl + Shift + R
 ```
 
-Lalu hard refresh sekali dengan `Ctrl+Shift+R`.
+Asset version:
+
+```text
+styles.css?v=4-complete
+app.js?v=4-complete
+```
