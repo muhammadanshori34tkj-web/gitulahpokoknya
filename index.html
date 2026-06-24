@@ -7,7 +7,7 @@
   <meta name="description" content="Moklet Cyberwatch — simulated global cyber threat monitoring dashboard for defensive education." />
   <title>Moklet Cyberwatch</title>
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=2-smooth" />
 </head>
 <body>
   <a class="skip-link" href="#main">Lewati ke konten utama</a>
@@ -300,7 +300,7 @@
           <div class="status-chip"><span>LATENCY</span><strong id="latency">42 ms</strong></div>
           <div class="status-chip"><span>EVENT RATE</span><strong id="eventRate">18 / min</strong></div>
           <div class="status-chip"><span>ACTIVE ARCS</span><strong id="activeArcs">14</strong></div>
-          <label class="speed-control">SPEED <select id="speedSelect"><option value="2500">0.5×</option><option value="1500" selected>1×</option><option value="850">2×</option></select></label>
+          <label class="speed-control">SPEED <select id="speedSelect"><option value="4000">0.5×</option><option value="2500" selected>1×</option><option value="1500">2×</option></select></label>
         </div>
 
         <div class="threat-ticker" aria-label="Ticker insiden">
@@ -391,6 +391,6 @@
   </div>
 
   <div class="toast-region" id="toastRegion" aria-live="polite"></div>
-  <script src="app.js"></script>
+  <script src="app.js?v=2-smooth"></script>
 </body>
 </html>

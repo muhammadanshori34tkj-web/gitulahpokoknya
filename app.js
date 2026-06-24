@@ -5,6 +5,9 @@
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
   const SVG_NS = 'http://www.w3.org/2000/svg';
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const lowPowerDevice = (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4) ||
+    (navigator.deviceMemory && navigator.deviceMemory <= 4);
+  const particleFrameMs = lowPowerDevice ? 1000 / 30 : 1000 / 60;
 
   const palette = {
     critical: '#ff3040', high: '#ff9f1c', medium: '#f4d35e', low: '#00d9ff', info: '#8f9ba8',
@@ -66,7 +69,7 @@
   const state = {
     paused: false,
     tickerPaused: false,
-    speed: 1500,
+    speed: 2500,
     feedFilter: 'all',
     heatVisible: true,
     arcsVisible: true,
@@ -77,6 +80,10 @@
     eventCounter: 184,
     generator: null,
     particles: [],
+    mapEventNodes: new Map(),
+    maxActiveEvents: lowPowerDevice ? 8 : 12,
+    lastTickerRender: 0,
+    lastMetricRender: 0,
     selectedIncident: null
   };
 
@@ -97,6 +104,7 @@
   function project(lat, lon) { return { x: (lon + 180) / 360 * 1600, y: (85 - Math.max(-60, Math.min(85, lat))) / 145 * 800 }; }
   function severityColor(severity) { return palette[severity] || palette.info; }
   function attackColor(type) { return attackTypes.find(a => a.name === type)?.color || palette.cyan; }
+  function attackCode(type) { return attackTypes.find(a => a.name === type)?.code.toLowerCase() || 'generic'; }
   function maskedIp() { return `${rand(23, 223)}.${rand(1, 254)}.xxx.${rand(1, 254)}`; }
 
   function createIncident(ageMinutes = rand(0, 1440)) {
@@ -128,7 +136,7 @@
 
   function seedData() {
     state.incidents = Array.from({ length: 150 }, (_, i) => createIncident(i * rand(4, 18))).sort((a, b) => b.timestamp - a.timestamp);
-    state.activeEvents = state.incidents.slice(0, 14);
+    state.activeEvents = state.incidents.slice(0, state.maxActiveEvents);
   }
 
   function svgEl(tag, attrs = {}) {
@@ -164,55 +172,93 @@
 
   function clearLayer(id) { const layer = $(id); if (layer) layer.replaceChildren(); }
 
+  function ensureHeatGradients() {
+    const defs = $('#worldMap defs');
+    if (!defs) return;
+    attackTypes.forEach(attack => {
+      const id = `heat-${attack.code.toLowerCase()}`;
+      if (document.getElementById(id)) return;
+      const gradient = svgEl('radialGradient', { id });
+      gradient.append(svgEl('stop', { offset: '0', 'stop-color': attack.color, 'stop-opacity': '.34' }));
+      gradient.append(svgEl('stop', { offset: '.48', 'stop-color': attack.color, 'stop-opacity': '.10' }));
+      gradient.append(svgEl('stop', { offset: '1', 'stop-color': attack.color, 'stop-opacity': '0' }));
+      defs.appendChild(gradient);
+    });
+  }
+
+  function removeMapEvent(eventId) {
+    const nodes = state.mapEventNodes.get(eventId);
+    if (!nodes) return;
+    Object.values(nodes).forEach(node => node?.remove?.());
+    state.mapEventNodes.delete(eventId);
+    state.particles = state.particles.filter(p => p.eventId !== eventId);
+  }
+
+  function addMapEvent(event) {
+    if (state.mapEventNodes.has(event.id)) return;
+    const arcLayer = $('#arcLayer');
+    const nodeLayer = $('#nodeLayer');
+    const particleLayer = $('#particleLayer');
+    const heatLayer = $('#heatLayer');
+    if (!arcLayer || !nodeLayer || !particleLayer || !heatLayer) return;
+
+    const { d, a, b } = arcPath(event);
+    const color = attackColor(event.attackType);
+    const width = event.severity === 'critical' ? 2.3 : event.severity === 'high' ? 1.6 : 1.05;
+    const path = svgEl('path', {
+      d,
+      class: `attack-arc ${event.severity === 'critical' ? 'critical' : ''}${state.paused ? ' paused' : ''}`,
+      stroke: color,
+      'stroke-width': width,
+      opacity: state.arcsVisible ? '.86' : '0'
+    });
+    path.addEventListener('pointermove', ev => showEventTooltip(ev, event));
+    path.addEventListener('pointerleave', hideTooltip);
+    path.addEventListener('click', ev => { ev.stopPropagation(); openIncidentDrawer(event); });
+    arcLayer.appendChild(path);
+
+    const sourceNode = svgEl('circle', { cx: a.x, cy: a.y, r: 3.3, class: 'attack-node-source', stroke: color });
+    const targetNode = svgEl('circle', { cx: b.x, cy: b.y, r: event.severity === 'critical' ? 4.2 : 3.2, class: 'attack-node-target', fill: color });
+    const ring = svgEl('circle', { cx: b.x, cy: b.y, r: 5, class: 'node-ring', style: `color:${color}` });
+    nodeLayer.append(sourceNode, targetNode, ring);
+
+    const heat = svgEl('circle', {
+      cx: b.x,
+      cy: b.y,
+      r: event.severity === 'critical' ? 38 : 24,
+      class: 'heat-point',
+      fill: `url(#heat-${attackCode(event.attackType)})`,
+      opacity: state.heatVisible ? '.72' : '0'
+    });
+    heatLayer.appendChild(heat);
+
+    const particle = svgEl('circle', {
+      r: event.severity === 'critical' ? 3 : 2,
+      fill: color,
+      class: 'attack-particle'
+    });
+    particleLayer.appendChild(particle);
+
+    const particleRecord = {
+      eventId: event.id,
+      el: particle,
+      path,
+      length: path.getTotalLength(),
+      offset: Math.random(),
+      speed: .000055 + Math.random() * .00005
+    };
+    state.particles.push(particleRecord);
+    state.mapEventNodes.set(event.id, { path, sourceNode, targetNode, ring, heat, particle });
+  }
+
   function renderMapEvents() {
     clearLayer('#arcLayer');
     clearLayer('#nodeLayer');
     clearLayer('#particleLayer');
     clearLayer('#heatLayer');
     state.particles = [];
-    $$('#worldMap defs [id^="heat-"]').forEach(node => node.remove());
-
-    const arcLayer = $('#arcLayer');
-    const nodeLayer = $('#nodeLayer');
-    const particleLayer = $('#particleLayer');
-    const heatLayer = $('#heatLayer');
-
-    state.activeEvents.forEach((event, index) => {
-      const { d, a, b } = arcPath(event);
-      const color = attackColor(event.attackType);
-      const width = event.severity === 'critical' ? 2.3 : event.severity === 'high' ? 1.6 : 1.05;
-      const path = svgEl('path', {
-        d,
-        class: `attack-arc ${event.severity === 'critical' ? 'critical' : ''}${state.paused ? ' paused' : ''}`,
-        stroke: color,
-        'stroke-width': width,
-        'data-index': index,
-        opacity: state.arcsVisible ? '.86' : '0'
-      });
-      path.addEventListener('pointermove', ev => showEventTooltip(ev, event));
-      path.addEventListener('pointerleave', hideTooltip);
-      path.addEventListener('click', ev => { ev.stopPropagation(); openIncidentDrawer(event); });
-      arcLayer.appendChild(path);
-
-      const sourceNode = svgEl('circle', { cx: a.x, cy: a.y, r: 3.3, class: 'attack-node-source', stroke: color });
-      const targetNode = svgEl('circle', { cx: b.x, cy: b.y, r: event.severity === 'critical' ? 4.2 : 3.2, class: 'attack-node-target', fill: color });
-      const ring = svgEl('circle', { cx: b.x, cy: b.y, r: 5, class: 'node-ring', style: `color:${color}` });
-      [sourceNode, targetNode, ring].forEach(n => nodeLayer.appendChild(n));
-
-      const heat = svgEl('circle', { cx: b.x, cy: b.y, r: event.severity === 'critical' ? 42 : 26, class: 'heat-point', fill: `url(#heat-${index})`, opacity: state.heatVisible ? '.8' : '0' });
-      const defs = $('#worldMap defs');
-      const gradient = svgEl('radialGradient', { id: `heat-${index}` });
-      gradient.append(svgEl('stop', { offset: '0', 'stop-color': color, 'stop-opacity': '.42' }));
-      gradient.append(svgEl('stop', { offset: '.45', 'stop-color': color, 'stop-opacity': '.12' }));
-      gradient.append(svgEl('stop', { offset: '1', 'stop-color': color, 'stop-opacity': '0' }));
-      defs.appendChild(gradient);
-      heatLayer.appendChild(heat);
-
-      const particle = svgEl('circle', { r: event.severity === 'critical' ? 3.2 : 2.1, fill: color, class: 'attack-particle' });
-      particleLayer.appendChild(particle);
-      state.particles.push({ el: particle, path, offset: Math.random(), speed: .00006 + Math.random() * .00006 });
-    });
-
+    state.mapEventNodes.clear();
+    state.activeEvents.forEach(addMapEvent);
     $('#activeArcs').textContent = String(state.activeEvents.length);
     if (!reduceMotion && !particleLoopStarted) {
       particleLoopStarted = true;
@@ -220,35 +266,36 @@
     }
   }
 
-  let lastParticleTime = 0;
+  let lastParticleFrame = 0;
   let particleLoopStarted = false;
   function animateParticles(time) {
-    if (time === lastParticleTime) return;
-    lastParticleTime = time;
-    if (!state.paused) {
-      state.particles.forEach((p, index) => {
-        const length = p.path.getTotalLength();
-        const phase = (time * p.speed + p.offset + index * .035) % 1;
-        const point = p.path.getPointAtLength(length * phase);
-        p.el.setAttribute('cx', point.x);
-        p.el.setAttribute('cy', point.y);
-      });
-    }
     requestAnimationFrame(animateParticles);
+    if (document.hidden || state.paused || time - lastParticleFrame < particleFrameMs) return;
+    if (!$('#view-dashboard')?.classList.contains('active')) return;
+    lastParticleFrame = time;
+    state.particles.forEach((p, index) => {
+      if (!p.el.isConnected || !p.length) return;
+      const phase = (time * p.speed + p.offset + index * .035) % 1;
+      const point = p.path.getPointAtLength(p.length * phase);
+      p.el.setAttribute('transform', `translate(${point.x.toFixed(1)} ${point.y.toFixed(1)})`);
+    });
   }
 
   function showEventTooltip(ev, event) {
     const tooltip = $('#mapTooltip');
-    tooltip.innerHTML = `
-      <div class="tt-head"><strong>${escapeHtml(event.id)}</strong><span style="color:${severityColor(event.severity)}">${event.severity.toUpperCase()}</span></div>
-      <dl>
-        <dt>Attack Type</dt><dd>${escapeHtml(event.attackType)}</dd>
-        <dt>Route</dt><dd>${escapeHtml(event.source.iso)} → ${escapeHtml(event.destination.iso)}</dd>
-        <dt>Source IP</dt><dd>${escapeHtml(event.sourceIp)}</dd>
-        <dt>Target Sector</dt><dd>${escapeHtml(event.targetSector)}</dd>
-        <dt>Confidence</dt><dd>${event.confidence}%</dd>
-        <dt>Status</dt><dd>${escapeHtml(event.status)}</dd>
-      </dl>`;
+    if (tooltip.dataset.eventId !== event.id) {
+      tooltip.dataset.eventId = event.id;
+      tooltip.innerHTML = `
+        <div class="tt-head"><strong>${escapeHtml(event.id)}</strong><span style="color:${severityColor(event.severity)}">${event.severity.toUpperCase()}</span></div>
+        <dl>
+          <dt>Attack Type</dt><dd>${escapeHtml(event.attackType)}</dd>
+          <dt>Route</dt><dd>${escapeHtml(event.source.iso)} → ${escapeHtml(event.destination.iso)}</dd>
+          <dt>Source IP</dt><dd>${escapeHtml(event.sourceIp)}</dd>
+          <dt>Target Sector</dt><dd>${escapeHtml(event.targetSector)}</dd>
+          <dt>Confidence</dt><dd>${event.confidence}%</dd>
+          <dt>Status</dt><dd>${escapeHtml(event.status)}</dd>
+        </dl>`;
+    }
     tooltip.style.left = `${Math.min(window.innerWidth - 280, ev.clientX)}px`;
     tooltip.style.top = `${Math.min(window.innerHeight - 220, ev.clientY)}px`;
     tooltip.classList.add('visible');
@@ -312,7 +359,7 @@
       </div>`).join('');
   }
 
-  function renderFeed() {
+  function renderFeed(animateNewest = false) {
     const filter = state.feedFilter;
     const items = state.incidents.filter(event => {
       if (filter === 'critical') return event.severity === 'critical';
@@ -320,7 +367,7 @@
       return true;
     }).slice(0, 18);
     $('#incidentFeed').innerHTML = items.map((event, index) => `
-      <article class="feed-item" data-incident="${event.id}" style="animation-delay:${Math.min(index * 30, 240)}ms">
+      <article class="feed-item ${animateNewest && index === 0 ? 'is-new' : ''}" data-incident="${event.id}">
         <time class="feed-time">${shortTime(event.timestamp)}</time>
         <div class="feed-main">
           <div class="feed-top"><span class="severity ${event.severity}">${event.severity}</span><span class="feed-status">${escapeHtml(event.status)}</span></div>
@@ -608,12 +655,28 @@
     state.incidents.unshift(event);
     state.incidents = state.incidents.slice(0, 180);
     state.activeEvents.unshift(event);
-    state.activeEvents = state.activeEvents.slice(0, 16);
-    renderMapEvents();
-    renderFeed();
-    renderTicker();
-    renderMetrics();
-    if ($('#view-incidents').classList.contains('active')) renderIncidentTable();
+    const removed = state.activeEvents.splice(state.maxActiveEvents);
+    removed.forEach(oldEvent => removeMapEvent(oldEvent.id));
+    addMapEvent(event);
+    $('#activeArcs').textContent = String(state.activeEvents.length);
+
+    // Spread DOM work over separate frames so the map animation stays responsive.
+    requestAnimationFrame(() => {
+      renderFeed(true);
+      const now = performance.now();
+      if (now - state.lastTickerRender > 10000) {
+        renderTicker();
+        state.lastTickerRender = now;
+      }
+      requestAnimationFrame(() => {
+        if (now - state.lastMetricRender > 8000) {
+          renderMetrics();
+          state.lastMetricRender = now;
+        }
+        if ($('#view-incidents').classList.contains('active')) renderIncidentTable();
+      });
+    });
+
     $('#eventRate').textContent = `${rand(14, 29)} / min`;
     $('#latency').textContent = `${rand(31, 58)} ms`;
     $('#countryUpdated').textContent = 'now';
@@ -625,9 +688,14 @@
     state.generator = setInterval(newLiveEvent, state.speed);
   }
 
+  let mapTransformFrame = 0;
   function updateMapTransform() {
-    const { scale, x, y } = state.map;
-    $('#mapViewport').style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+    if (mapTransformFrame) return;
+    mapTransformFrame = requestAnimationFrame(() => {
+      mapTransformFrame = 0;
+      const { scale, x, y } = state.map;
+      $('#mapViewport').style.transform = `translate3d(${x}px, ${y}px, 0) scale(${scale})`;
+    });
   }
 
   function setupMapInteractions() {
@@ -691,7 +759,12 @@
     $('#detailsBtn').addEventListener('click', () => navigate('analytics'));
     $('#reportBtn').addEventListener('click', () => showToast('Report builder', `Country report preview prepared for ${state.selectedCountry}.`));
     $('#exportCsvBtn').addEventListener('click', exportCsv);
-    ['incidentSearch','severityFilter','statusFilter'].forEach(id => document.getElementById(id)?.addEventListener(id === 'incidentSearch' ? 'input' : 'change', renderIncidentTable));
+    let incidentSearchTimer = 0;
+    ['incidentSearch','severityFilter','statusFilter'].forEach(id => document.getElementById(id)?.addEventListener(id === 'incidentSearch' ? 'input' : 'change', () => {
+      if (id !== 'incidentSearch') return renderIncidentTable();
+      clearTimeout(incidentSearchTimer);
+      incidentSearchTimer = setTimeout(renderIncidentTable, 140);
+    }));
     $('#commandInput').addEventListener('input', ev => renderCommands(ev.target.value));
     $('#commandOverlay').addEventListener('click', ev => { if (ev.target === $('#commandOverlay')) closeCommandPalette(); });
     document.addEventListener('keydown', ev => {
@@ -707,21 +780,23 @@
   }
 
   function init() {
+    document.documentElement.classList.toggle('low-power', Boolean(lowPowerDevice));
     seedData();
     addGridLines();
+    ensureHeatGradients();
     bindCountries();
     renderMapEvents();
     renderFeed();
     renderTicker();
+    state.lastTickerRender = performance.now();
     renderMetrics();
+    state.lastMetricRender = performance.now();
     renderActivityChart();
     renderDonut();
     renderCountryRanking();
     renderSecurityScore();
     renderSoc();
-    renderIncidentTable();
     renderNotifications();
-    renderAnalyticsPage();
     renderIntel();
     renderEducation();
     renderSources();

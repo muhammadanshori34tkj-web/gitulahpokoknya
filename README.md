@@ -56,3 +56,10 @@ moklet-cyberwatch/
 Versi ini adalah frontend prototype berbasis data simulasi. Untuk produksi, event generator di `app.js` dapat diganti dengan WebSocket/API backend, lalu ditambahkan autentikasi, database, RBAC server-side, audit logging, dan validasi API.
 
 Peta menggunakan geometri low-resolution Natural Earth yang disertakan melalui dataset pengujian Pyogrio/GeoPandas pada lingkungan pembuatan proyek.
+
+
+## Smooth performance build
+
+Versi ini mengurangi jank dengan pembaruan peta secara incremental, cache panjang SVG path, pengurangan backdrop blur, animasi scan berbasis transform, pembatasan active arcs, dan pembaruan ticker/metrics yang di-throttle.
+
+Setelah deploy ulang ke Vercel, lakukan hard refresh (`Ctrl+Shift+R`) karena asset menggunakan query versi `v=2-smooth`.
